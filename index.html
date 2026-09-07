@@ -2,39 +2,42 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>GTag VR - Opravená výška a kolize</title>
+    <title>GTag VR - Prodloužené paže a Kolize</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
     <script>
-      AFRAME.registerComponent('gtag-engine', {
+      AFRAME.registerComponent('gtag-physics', {
         init: function () {
+          this.leftSphere = document.getElementById('leftSphere');
+          this.rightSphere = document.getElementById('rightSphere');
           this.leftHand = document.getElementById('leftHand');
           this.rightHand = document.getElementById('rightHand');
           
-          this.prevLeftWorld = new THREE.Vector3();
-          this.prevRightWorld = new THREE.Vector3();
-          this.currLeftWorld = new THREE.Vector3();
-          this.currRightWorld = new THREE.Vector3();
-          
           this.velocity = new THREE.Vector3(0, 0, 0);
           this.gravity = -9.81;
-          this.hasPrev = false;
 
-          // Hitbox kolem ruky (0.25m zajišťuje snadný dotyk)
-          this.handRadius = 0.25;
+          this.prevLeftLocal = new THREE.Vector3();
+          this.prevRightLocal = new THREE.Vector3();
+          this.currWorldPos = new THREE.Vector3();
+          
+          this.hasPrev = false;
+          this.handRadius = 0.15; // Velikost odrazové koule
           this.sphere = new THREE.Sphere(new THREE.Vector3(), this.handRadius);
           this.box = new THREE.Box3();
         },
 
-        // Test kolize se zemí nebo jakýmkoliv objektem
-        checkCollision: function (handWorldPos) {
-          // 1. Test dotyku se zemí (y <= radius)
-          if (handWorldPos.y <= this.handRadius) {
+        // Test kolize koule na ruce se zemí nebo s krabicí
+        checkCollision: function (sphereEl) {
+          if (!sphereEl) return false;
+          sphereEl.object3D.getWorldPosition(this.currWorldPos);
+
+          // 1. Dotyk se zelenou zemí (y <= velikost koule)
+          if (this.currWorldPos.y <= this.handRadius) {
             return true;
           }
 
-          // 2. Test dotyku s překážkami (class="collidable")
-          this.sphere.center.copy(handWorldPos);
+          // 2. Dotyk s jakýmkoliv objektem označeným class="collidable"
+          this.sphere.center.copy(this.currWorldPos);
           let collidables = document.querySelectorAll('.collidable');
           for (let i = 0; i < collidables.length; i++) {
             if (collidables[i].object3D) {
@@ -50,53 +53,59 @@
         tick: function (time, timeDelta) {
           if (!timeDelta || !this.leftHand || !this.rightHand) return;
           let dt = timeDelta / 1000;
-          if (dt > 0.1) dt = 0.1; // Ochrana proti zásekům
+          if (dt > 0.1) dt = 0.1;
 
-          // Načtení reálných SVĚTOVÝCH pozic rukou
-          this.leftHand.object3D.getWorldPosition(this.currLeftWorld);
-          this.rightHand.object3D.getWorldPosition(this.currRightWorld);
+          // Místní pozice ovladačů vůči tělu
+          let leftLocal = this.leftHand.object3D.position;
+          let rightLocal = this.rightHand.object3D.position;
 
           if (!this.hasPrev) {
-            this.prevLeftWorld.copy(this.currLeftWorld);
-            this.prevRightWorld.copy(this.currRightWorld);
+            this.prevLeftLocal.copy(leftLocal);
+            this.prevRightLocal.copy(rightLocal);
             this.hasPrev = true;
             return;
           }
 
-          // Výpočet fyzického švihu rukou ve světě
-          let leftDelta = new THREE.Vector3().subVectors(this.currLeftWorld, this.prevLeftWorld);
-          let rightDelta = new THREE.Vector3().subVectors(this.currRightWorld, this.prevRightWorld);
+          // Výpočet fyzického pohybu ruky
+          let leftDelta = new THREE.Vector3().subVectors(leftLocal, this.prevLeftLocal);
+          let rightDelta = new THREE.Vector3().subVectors(rightLocal, this.prevRightLocal);
 
-          let leftHit = this.checkCollision(this.currLeftWorld);
-          let rightHit = this.checkCollision(this.currRightWorld);
+          // Otočení švihu podle natočení hráče
+          leftDelta.applyQuaternion(this.el.object3D.quaternion);
+          rightDelta.applyQuaternion(this.el.object3D.quaternion);
+
+          let leftTouch = this.checkCollision(this.leftSphere);
+          let rightTouch = this.checkCollision(this.rightSphere);
 
           let isTouching = false;
           let pushDelta = new THREE.Vector3();
 
-          if (leftHit && rightHit) {
+          if (leftTouch && rightTouch) {
             pushDelta.copy(leftDelta).add(rightDelta).multiplyScalar(0.5);
             isTouching = true;
-          } else if (leftHit) {
+          } else if (leftTouch) {
             pushDelta.copy(leftDelta);
             isTouching = true;
-          } else if (rightHit) {
+          } else if (rightTouch) {
             pushDelta.copy(rightDelta);
             isTouching = true;
           }
 
           if (isTouching) {
-            // ODRAZ / LEZENÍ: Posuneme hráče OPAČNÝM směrem než švihla ruka
-            let force = 2.2;
-            this.el.object3D.position.x -= pushDelta.x * force;
-            this.el.object3D.position.y -= pushDelta.y * force;
-            this.el.object3D.position.z -= pushDelta.z * force;
+            // ŠVIH RUKOU -> ODRAZ HRÁČE
+            let bounceForce = 1.8;
 
-            // Uložení rychlosti pro setrvačnost skoku
-            this.velocity.x = -pushDelta.x * force * 15;
-            this.velocity.y = -pushDelta.y * force * 15;
-            this.velocity.z = -pushDelta.z * force * 15;
+            // Posuneme hráče v prostoru opačným směrem než švihla ruka
+            this.el.object3D.position.x -= pushDelta.x * bounceForce;
+            this.el.object3D.position.y -= pushDelta.y * bounceForce;
+            this.el.object3D.position.z -= pushDelta.z * bounceForce;
+
+            // Dáme hráčovi rychlost pro let/skok
+            this.velocity.x = (-pushDelta.x * bounceForce) / dt;
+            this.velocity.y = (-pushDelta.y * bounceForce) / dt;
+            this.velocity.z = (-pushDelta.z * bounceForce) / dt;
           } else {
-            // LET / PÁD (Gravitace)
+            // GRAVITACE VE VZDUCHU
             this.velocity.y += this.gravity * dt;
 
             this.el.object3D.position.x += this.velocity.x * dt;
@@ -104,52 +113,47 @@
             this.el.object3D.position.z += this.velocity.z * dt;
 
             // Zpomalování ve vzduchu
-            this.velocity.x *= 0.96;
-            this.velocity.z *= 0.96;
+            this.velocity.x *= 0.95;
+            this.velocity.z *= 0.95;
           }
 
-          // Spodní hranice podlahy pro rig
-          if (this.el.object3D.position.y < -0.65) {
-            this.el.object3D.position.y = -0.65;
+          // Zastavení na zemi (Hráč nepropadne pod y = 0)
+          if (this.el.object3D.position.y < 0) {
+            this.el.object3D.position.y = 0;
             if (this.velocity.y < 0) this.velocity.y = 0;
           }
 
-          // Aktualizace předchozích pozic
-          this.leftHand.object3D.getWorldPosition(this.prevLeftWorld);
-          this.rightHand.object3D.getWorldPosition(this.prevRightWorld);
+          this.prevLeftLocal.copy(leftLocal);
+          this.prevRightLocal.copy(rightLocal);
         }
       });
     </script>
   </head>
   <body>
-    <a-scene background="color: #4cc9f0">
+    <a-scene background="color: #70d6ff">
       <a-light type="ambient" intensity="0.8"></a-light>
       <a-light type="directional" position="-1 3 2" intensity="0.8"></a-light>
 
-      <!-- Podlaha -->
+      <!-- Zelená podlaha -->
       <a-plane position="0 0 0" rotation="-90 0 0" width="80" height="80" color="#38b000"></a-plane>
 
-      <!-- PARKOUR OBJEKTY (Všechno s class="collidable" má kolize a lze po tom lézt) -->
-      <!-- Červená bedna přímo před hráčem na vyskoušení -->
-      <a-box class="collidable" position="0 0.5 -1.5" width="2" height="1" depth="1.5" color="#e63946"></a-box>
+      <!-- PŘEKÁŽKY S KOLIZEMI (class="collidable") -->
+      <a-box class="collidable" position="0 0.5 -2" width="2" height="1" depth="2" color="#e63946"></a-box>
+      <a-box class="collidable" position="-2.5 1.5 -4" width="2" height="3" depth="2" color="#7209b7"></a-box>
+      <a-box class="collidable" position="2.5 2 -5" width="2" height="4" depth="2" color="#f72585"></a-box>
 
-      <!-- Vysoké stěny a sloupy -->
-      <a-box class="collidable" position="-2.5 1.5 -3" width="2" height="3" depth="2" color="#7209b7"></a-box>
-      <a-box class="collidable" position="2.5 2 -4" width="2" height="4" depth="2" color="#f72585"></a-box>
-      <a-cylinder class="collidable" position="0 2 -5" radius="1" height="4" color="#4361ee"></a-cylinder>
+      <!-- HRÁČ -->
+      <a-entity id="rig" gtag-physics position="0 0 0">
+        <a-entity camera look-controls position="0 0 0"></a-entity>
 
-      <!-- HRÁČ (Rig je posunut na -0.65m, takže v reálném stoji máš ruce hned u virtuální země) -->
-      <a-entity id="rig" gtag-engine position="0 -0.65 0">
-        <a-entity camera position="0 0 0" look-controls></a-entity>
-
-        <!-- Levá ruka -->
+        <!-- Levý ovladač (Koule posunutá o 35 cm dolů pro opičí dosah) -->
         <a-entity id="leftHand" oculus-touch-controls="hand: left">
-          <a-sphere radius="0.15" color="#ff4d6d" opacity="0.9"></a-sphere>
+          <a-sphere id="leftSphere" position="0 -0.35 0" radius="0.15" color="#ff4d6d"></a-sphere>
         </a-entity>
 
-        <!-- Pravá ruka -->
+        <!-- Pravý ovladač (Koule posunutá o 35 cm dolů pro opičí dosah) -->
         <a-entity id="rightHand" oculus-touch-controls="hand: right">
-          <a-sphere radius="0.15" color="#00b4d8" opacity="0.9"></a-sphere>
+          <a-sphere id="rightSphere" position="0 -0.35 0" radius="0.15" color="#00b4d8"></a-sphere>
         </a-entity>
       </a-entity>
     </a-scene>
