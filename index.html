@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>GTag VR - Nekonečná Šedá Zem</title>
+    <title>GTag VR</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
     <script>
@@ -27,18 +27,15 @@
           this.box = new THREE.Box3();
         },
 
-        // Vypočítá, jak hluboko je ruka pod zemí nebo v objektu
         getHandGroundPenetration: function (sphereEl, worldPos) {
           if (!sphereEl) return 0;
           sphereEl.object3D.getWorldPosition(worldPos);
 
-          // Dotyk se šedou zemí (y <= handRadius)
           let groundPenetration = this.handRadius - worldPos.y;
           if (groundPenetration > 0) {
             return groundPenetration;
           }
 
-          // Dotyk s překážkami class="collidable"
           this.sphere.center.copy(worldPos);
           let collidables = document.querySelectorAll('.collidable');
           for (let i = 0; i < collidables.length; i++) {
@@ -98,7 +95,6 @@
             this.velocity.y = (-pushDelta.y * bounceForce) / dt;
             this.velocity.z = (-pushDelta.z * bounceForce) / dt;
           } else {
-            // Gravitace ve vzduchu
             this.velocity.y += this.gravity * dt;
 
             this.el.object3D.position.x += this.velocity.x * dt;
@@ -109,8 +105,7 @@
             this.velocity.z *= 0.95;
           }
 
-          // AUTOMATICKÉ USAZENÍ NA ZEM:
-          // Pokud je ruka pod úrovní šedé země, posuneme hráče nahoru tak, aby koule seděla na podlaze.
+          // Automatický spawn a usazení přímo na šedou zem
           this.leftSphere.object3D.getWorldPosition(this.leftWorldPos);
           this.rightSphere.object3D.getWorldPosition(this.rightWorldPos);
           let minY = Math.min(this.leftWorldPos.y, this.rightWorldPos.y);
@@ -127,46 +122,28 @@
     </script>
   </head>
   <body>
-    <a-scene background="color: #87ceeb" fog="type: linear; color: #87ceeb; near: 30; far: 150">
+    <a-scene background="color: #87ceeb">
       <a-light type="ambient" intensity="0.7"></a-light>
       <a-light type="directional" position="-2 5 3" intensity="0.9"></a-light>
 
-      <!-- 1. NEKONEČNÁ ŠEDÁ ZEM (2000 x 2000 m) -->
-      <a-box class="collidable" position="0 -0.5 0" width="2000" height="1" depth="2000" color="#4a5568"></a-box>
+      <!-- NEKONEČNÁ ŠEDÁ ZEM VŠUDE -->
+      <a-box class="collidable" position="0 -0.5 0" width="5000" height="1" depth="5000" color="#4a5568"></a-box>
 
-      <!-- 2. STROM 1 (Na lezení) -->
-      <a-cylinder class="collidable" position="0 4 -5" radius="0.6" height="8" color="#5c3d2e"></a-cylinder>
-      <a-box class="collidable" position="0 2.5 -5" width="3.5" height="0.4" depth="3.5" color="#2d6a4f"></a-box>
-      <a-box class="collidable" position="0 5 -5" width="2.8" height="0.4" depth="2.8" color="#40916c"></a-box>
-      <a-box class="collidable" position="0 7.5 -5" width="2" height="0.4" depth="2" color="#52b788"></a-box>
+      <!-- OBJEKTY NA SKÁKÁNÍ -->
+      <a-box class="collidable" position="0 0.5 -3" width="3" height="1" depth="3" color="#e63946"></a-box>
+      <a-box class="collidable" position="-4 1.5 -5" width="3" height="3" depth="3" color="#7209b7"></a-box>
+      <a-box class="collidable" position="4 2 -6" width="3" height="4" depth="3" color="#f72585"></a-box>
 
-      <!-- 3. STROM 2 -->
-      <a-cylinder class="collidable" position="-5 5 -7" radius="0.6" height="10" color="#5c3d2e"></a-cylinder>
-      <a-box class="collidable" position="-5 3.5 -7" width="4" height="0.4" depth="4" color="#2d6a4f"></a-box>
-      <a-box class="collidable" position="-5 6.5 -7" width="3" height="0.4" depth="3" color="#40916c"></a-box>
-      <a-box class="collidable" position="-5 9.5 -7" width="2" height="0.4" depth="2" color="#52b788"></a-box>
-
-      <!-- 4. ČERVENÁ SKOKANSKÁ RAMPA -->
-      <a-box class="collidable" position="4 1.2 -3" rotation="25 -30 0" width="3" height="0.3" depth="6" color="#e63946"></a-box>
-
-      <!-- 5. PARKOUR VĚŽ SE ZLATOU TROFEJÍ -->
-      <a-box class="collidable" position="8 1 -8" width="3" height="2" depth="3" color="#2b2d42"></a-box>
-      <a-box class="collidable" position="8 3 -8" width="2.5" height="2" depth="2.5" color="#3d405b"></a-box>
-      <a-box class="collidable" position="8 5 -8" width="2" height="2" depth="2" color="#5c677d"></a-box>
-      <a-sphere class="collidable" position="8 6.8 -8" radius="0.6" color="#ffb703"></a-sphere>
-
-      <!-- HRÁČ (Opičí Rig) -->
+      <!-- HRÁČ -->
       <a-entity id="rig" gtag-physics position="0 0 0">
         <a-entity camera look-controls position="0 0 0"></a-entity>
 
-        <!-- Levá ruka (Prodlužující opičí koule) -->
         <a-entity id="leftHand" oculus-touch-controls="hand: left">
-          <a-sphere id="leftSphere" position="0 -0.50 0" radius="0.16" color="#ff4d6d"></a-sphere>
+          <a-sphere id="leftSphere" position="0 -0.45 0" radius="0.16" color="#ff4d6d"></a-sphere>
         </a-entity>
 
-        <!-- Pravá ruka (Prodlužující opičí koule) -->
         <a-entity id="rightHand" oculus-touch-controls="hand: right">
-          <a-sphere id="rightSphere" position="0 -0.50 0" radius="0.16" color="#00b4d8"></a-sphere>
+          <a-sphere id="rightSphere" position="0 -0.45 0" radius="0.16" color="#00b4d8"></a-sphere>
         </a-entity>
       </a-entity>
     </a-scene>
