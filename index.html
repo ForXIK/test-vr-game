@@ -2,88 +2,79 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>GTag VR Hra</title>
-    <!-- Pouze oficiální knihovna A-Frame -->
+    <title>GTag VR - Nízký profil</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
     <script>
-      // Komponenta pro fyziku odrážení (Gorilla Tag)
-      AFRAME.registerComponent('gtag-hands', {
+      AFRAME.registerComponent('gtag-bounce', {
         init: function () {
-          this.rig = document.getElementById('player-rig');
-          this.prevPos = new THREE.Vector3();
+          this.rig = document.getElementById('rig');
+          this.prevY = 0;
+          this.prevX = 0;
+          this.prevZ = 0;
+          
+          // Sledování pohybu ruky
           this.currPos = new THREE.Vector3();
-          this.hasPrev = false;
-
-          // Sledování zmáčknutí spouště/gripu pro odraz
-          this.isGrabbing = false;
-          this.el.addEventListener('selectstart', () => { this.isGrabbing = true; });
-          this.el.addEventListener('selectend', () => { this.isGrabbing = false; });
-          this.el.addEventListener('squeezestart', () => { this.isGrabbing = true; });
-          this.el.addEventListener('squeezeend', () => { this.isGrabbing = false; });
         },
         tick: function () {
           if (!this.rig) return;
 
-          // Zjistíme pozici ruky v prostoru
+          // Zjistíme absolutní pozici ovladače
           this.el.object3D.getWorldPosition(this.currPos);
 
-          if (!this.hasPrev) {
-            this.prevPos.copy(this.currPos);
-            this.hasPrev = true;
-            return;
-          }
+          // Výpočet rychlosti švihu ruky směrem dolů/vzad
+          let deltaX = this.currPos.x - this.prevX;
+          let deltaY = this.currPos.y - this.prevY;
+          let deltaZ = this.currPos.z - this.prevZ;
 
-          // Pokud se ruka dotkne země (výška < 0.5m) nebo stiskneš tlačítko
-          if (this.currPos.y < 0.6 || this.isGrabbing) {
-            let dx = this.currPos.x - this.prevPos.x;
-            let dy = this.currPos.y - this.prevPos.y;
-            let dz = this.currPos.z - this.prevPos.z;
-
-            // Posuneme hráče OPAČNÝM směrem než švihla ruka
-            this.rig.object3D.position.x -= dx * 1.8;
-            this.rig.object3D.position.y -= dy * 1.5;
-            this.rig.object3D.position.z -= dz * 1.8;
-
-            // Zamezení propadu pod zem
-            if (this.rig.object3D.position.y < 0) {
-              this.rig.object3D.position.y = 0;
+          // POHYB: Když je ruka blízko podlahy (výška pod 0.5 metru od reálné země)
+          if (this.currPos.y < 0.5) {
+            // Pokud ruka švihne směrem k zemi (deltaY < 0), vymrští hráče nahoru a dopředu
+            if (deltaY < 0) {
+              this.rig.object3D.position.x -= deltaX * 2.5;
+              this.rig.object3D.position.y -= deltaY * 2.0; // Odraz nahoru
+              this.rig.object3D.position.z -= deltaZ * 2.5;
             }
           }
 
-          this.prevPos.copy(this.currPos);
+          // Gravitace - pokud je hráč ve vzduchu, pomalu padá dolů
+          if (this.rig.object3D.position.y > 0) {
+            this.rig.object3D.position.y -= 0.03;
+          } else {
+            this.rig.object3D.position.y = 0;
+          }
+
+          this.prevX = this.currPos.x;
+          this.prevY = this.currPos.y;
+          this.prevZ = this.currPos.z;
         }
       });
     </script>
   </head>
   <body>
     <a-scene background="color: #87CEEB">
-      <!-- Světlo -->
-      <a-light type="ambient" color="#ffffff" intensity="0.6"></a-light>
-      <a-light type="directional" position="-1 2 1" intensity="0.8"></a-light>
+      <!-- Světlo a země -->
+      <a-light type="ambient" intensity="0.8"></a-light>
+      <a-plane position="0 0 0" rotation="-90 0 0" width="80" height="80" color="#2d6a4f"></a-plane>
 
-      <!-- Podlaha / Země -->
-      <a-plane position="0 0 0" rotation="-90 0 0" width="100" height="100" color="#3a5a40"></a-plane>
+      <!-- Překážky na odrážení (Krabice a Stěny) -->
+      <a-box position="0 0.5 -2" width="2" height="1" depth="2" color="#582f0e"></a-box>
+      <a-box position="-2 1 -4" width="2" height="2" depth="2" color="#7f4f24"></a-box>
+      <a-box position="2 1.5 -5" width="2" height="3" depth="2" color="#582f0e"></a-box>
 
-      <!-- Parkour aréna (překážky na lezení a skákání) -->
-      <a-box position="0 0.5 -3" width="2" height="1" depth="2" color="#582f0e"></a-box>
-      <a-box position="2 1 -5" width="2" height="2" depth="2" color="#7f4f24"></a-box>
-      <a-box position="-2.5 1.5 -4" width="2" height="3" depth="2" color="#582f0e"></a-box>
-      <a-cylinder position="0 2.5 -8" radius="1.5" height="5" color="#936639"></a-cylinder>
+      <!-- HRÁČ (Pohled snížen na 0.4 m nad zemí!) -->
+      <a-entity id="rig" position="0 0 0">
+        <!-- Kamera snížená dolů k zemi -->
+        <a-entity camera position="0 0.4 0" look-controls></a-entity>
 
-      <!-- HRÁČ -->
-      <a-entity id="player-rig" position="0 0 0">
-        <!-- Kamera (Hlava) -->
-        <a-entity camera position="0 1.6 0" look-controls></a-entity>
-
-        <!-- Levý ovladač (Červená koule) -->
-        <a-entity oculus-touch-controls="hand: left" gtag-hands>
-          <a-sphere radius="0.12" color="#e63946"></a-sphere>
+        <!-- Levý ovladač (Červená ruka s detekcí odrazu) -->
+        <a-entity oculus-touch-controls="hand: left" gtag-bounce>
+          <a-sphere radius="0.15" color="#e63946"></a-sphere>
         </a-entity>
 
-        <!-- Pravý ovladač (Modrá koule) -->
-        <a-entity oculus-touch-controls="hand: right" gtag-hands>
-          <a-sphere radius="0.12" color="#1d3557"></a-sphere>
+        <!-- Pravý ovladač (Modrá ruka s detekcí odrazu) -->
+        <a-entity oculus-touch-controls="hand: right" gtag-bounce>
+          <a-sphere radius="0.15" color="#1d3557"></a-sphere>
         </a-entity>
       </a-entity>
     </a-scene>
