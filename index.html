@@ -2,79 +2,95 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>GTag VR - Nízký profil</title>
+    <title>GTag VR - Realistická Gravitace</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
     <script>
-      AFRAME.registerComponent('gtag-bounce', {
+      AFRAME.registerComponent('gtag-physics', {
         init: function () {
           this.rig = document.getElementById('rig');
-          this.prevY = 0;
-          this.prevX = 0;
-          this.prevZ = 0;
-          
-          // Sledování pohybu ruky
+          this.velocity = new THREE.Vector3(0, 0, 0); // Rychlost pohybu hráče
+          this.gravity = -9.81; // Gravitační zrychlení
+          this.prevPos = new THREE.Vector3();
           this.currPos = new THREE.Vector3();
+          this.hasPrev = false;
         },
-        tick: function () {
-          if (!this.rig) return;
+        tick: function (time, timeDelta) {
+          if (!this.rig || !timeDelta) return;
 
-          // Zjistíme absolutní pozici ovladače
+          // Převod času z milisekund na sekundy
+          let dt = timeDelta / 1000;
+
+          // 1. ZJISTÍME POHYB RUKY (OVLADAČE)
           this.el.object3D.getWorldPosition(this.currPos);
 
-          // Výpočet rychlosti švihu ruky směrem dolů/vzad
-          let deltaX = this.currPos.x - this.prevX;
-          let deltaY = this.currPos.y - this.prevY;
-          let deltaZ = this.currPos.z - this.prevZ;
+          if (this.hasPrev) {
+            let dx = this.currPos.x - this.prevPos.x;
+            let dy = this.currPos.y - this.prevPos.y;
+            let dz = this.currPos.z - this.prevPos.z;
 
-          // POHYB: Když je ruka blízko podlahy (výška pod 0.5 metru od reálné země)
-          if (this.currPos.y < 0.5) {
-            // Pokud ruka švihne směrem k zemi (deltaY < 0), vymrští hráče nahoru a dopředu
-            if (deltaY < 0) {
-              this.rig.object3D.position.x -= deltaX * 2.5;
-              this.rig.object3D.position.y -= deltaY * 2.0; // Odraz nahoru
-              this.rig.object3D.position.z -= deltaZ * 2.5;
+            // Pokud ruka plácne k zemi (výška < 0.6m) nebo švihne dolů
+            if (this.currPos.y < 0.6 && dy < 0) {
+              // Udělíme hráčovi okamžitý impuls OPAČNÝM směrem než švihla ruka
+              let bounceForce = 3.5;
+              this.velocity.x = -dx * bounceForce * 15;
+              this.velocity.y = -dy * bounceForce * 12; // Vymrštění do vzduchu
+              this.velocity.z = -dz * bounceForce * 15;
             }
           }
+          this.prevPos.copy(this.currPos);
+          this.hasPrev = true;
 
-          // Gravitace - pokud je hráč ve vzduchu, pomalu padá dolů
-          if (this.rig.object3D.position.y > 0) {
-            this.rig.object3D.position.y -= 0.03;
-          } else {
-            this.rig.object3D.position.y = 0;
+          // 2. APLIKACE GRAVITACE
+          // Pokud je hráč ve vzduchu, gravitace ho táhne dolů
+          if (this.rig.object3D.position.y > 0 || this.velocity.y > 0) {
+            this.velocity.y += this.gravity * dt; // Zrychlování pádu
           }
 
-          this.prevX = this.currPos.x;
-          this.prevY = this.currPos.y;
-          this.prevZ = this.currPos.z;
+          // 3. POSUN HRÁČE PODLE RYCHLOSTI
+          this.rig.object3D.position.x += this.velocity.x * dt;
+          this.rig.object3D.position.y += this.velocity.y * dt;
+          this.rig.object3D.position.z += this.velocity.z * dt;
+
+          // Postupné zpomalování horizontálního dojezdu (tření vzduchu)
+          this.velocity.x *= 0.95;
+          this.velocity.z *= 0.95;
+
+          // 4. KOLIZE SE ZEMÍ (DOPAD)
+          if (this.rig.object3D.position.y <= 0) {
+            this.rig.object3D.position.y = 0;
+            this.velocity.y = 0; // Zastavení pádu na zemi
+          }
         }
       });
     </script>
   </head>
   <body>
-    <a-scene background="color: #87CEEB">
-      <!-- Světlo a země -->
+    <a-scene background="color: #70d6ff">
       <a-light type="ambient" intensity="0.8"></a-light>
-      <a-plane position="0 0 0" rotation="-90 0 0" width="80" height="80" color="#2d6a4f"></a-plane>
+      <a-light type="directional" position="-1 4 2" intensity="0.6"></a-light>
 
-      <!-- Překážky na odrážení (Krabice a Stěny) -->
-      <a-box position="0 0.5 -2" width="2" height="1" depth="2" color="#582f0e"></a-box>
-      <a-box position="-2 1 -4" width="2" height="2" depth="2" color="#7f4f24"></a-box>
-      <a-box position="2 1.5 -5" width="2" height="3" depth="2" color="#582f0e"></a-box>
+      <!-- Podlaha -->
+      <a-plane position="0 0 0" rotation="-90 0 0" width="100" height="100" color="#38b000"></a-plane>
 
-      <!-- HRÁČ (Pohled snížen na 0.4 m nad zemí!) -->
+      <!-- Parkour bedny na skákání -->
+      <a-box position="0 0.5 -3" width="2" height="1" depth="2" color="#7f4f24"></a-box>
+      <a-box position="-3 1.2 -5" width="2" height="2.4" depth="2" color="#582f0e"></a-box>
+      <a-box position="3 2 -7" width="3" height="4" depth="3" color="#7f4f24"></a-box>
+
+      <!-- HRÁČ -->
       <a-entity id="rig" position="0 0 0">
-        <!-- Kamera snížená dolů k zemi -->
+        <!-- Kamera nízko u země -->
         <a-entity camera position="0 0.4 0" look-controls></a-entity>
 
-        <!-- Levý ovladač (Červená ruka s detekcí odrazu) -->
-        <a-entity oculus-touch-controls="hand: left" gtag-bounce>
-          <a-sphere radius="0.15" color="#e63946"></a-sphere>
+        <!-- Levý ovladač -->
+        <a-entity oculus-touch-controls="hand: left" gtag-physics>
+          <a-sphere radius="0.12" color="#e63946"></a-sphere>
         </a-entity>
 
-        <!-- Pravý ovladač (Modrá ruka s detekcí odrazu) -->
-        <a-entity oculus-touch-controls="hand: right" gtag-bounce>
-          <a-sphere radius="0.15" color="#1d3557"></a-sphere>
+        <!-- Pravý ovladač -->
+        <a-entity oculus-touch-controls="hand: right" gtag-physics>
+          <a-sphere radius="0.12" color="#1d3557"></a-sphere>
         </a-entity>
       </a-entity>
     </a-scene>
